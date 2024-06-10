@@ -11,3 +11,7 @@ Encoding: UTF-8
 
 RnwWeave: Sweave
 LaTeX: XeLaTeX
+
+PythonType: conda
+PythonVersion: 3.12.3
+PythonPath: /opt/homebrew/Caskroom/miniforge/base/envs/streamlit/bin/python3.12
