@@ -3,23 +3,39 @@
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import branca
+#import folium
+#from streamlit_folium import st_folium
+#import matplotlib.pyplot as plt
+#import matplotlib.colors as mcolors
+#import branca
 import numpy as np
 from streamlit_option_menu import option_menu
 import altair as alt
 import plotly.express as px
-
+from streamlit_plotly_mapbox_events import plotly_mapbox_events
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 # variables
 APP_TITLE = 'Universidad de Talca'
 APP_SUB_TITLE = 'Red de Ex-alumnos'
 name_comunas = "data/INE/comunas_nac.geojson"
 name_zonas = "data/INE/zonas_nac.geojson"
-drop_cols = ["OBJECTID", "COMUNA", "PROVINCIA", "NOM_REGION" , "NOM_PROVIN", "REGION", "geometry", "id"]
+drop_cols = ["OBJECTID", "COMUNA", "PROVINCIA", "NOM_REGION" , "NOM_PROVIN", 
+             "REGION", "geometry", "id"]
+path_csv = "originales/dataraw.csv"
+col_names = [
+"Dirección de correo electrónico",
+"NOMBRE ",
+"APELLIDO PATERNO",
+"APELLIDO MATERNO",
+"AÑO DE EGRESO DE LA ESCUELA DE ARQUITECTURA ",
+"POSTITULO SUPERIOR",
+"ESPECIALIDAD",
+"SECTOR",
+"ESTADO",
+"INSTITUCIÓN",
+"CARGO",
+]
 
 # Configuración de la página
 st.set_page_config(
@@ -41,11 +57,97 @@ st.markdown(
 )
 
 # Funciones
+@st.cache_data
+def read_csv(csv_path):
+    df = pd.read_csv(csv_path)
+    return df 
+
+@st.cache_data
+def csv2gdf(csv_path):
+    df = pd.read_csv(csv_path)
+    df = df[df['Coordenadas'].notna()]
+    df[['Latitude', 'Longitude']] = df['Coordenadas'].str.split(',', expand=True)
+    # Convertir las columnas de latitud y longitud a float
+    df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+    gdf_file = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
+    return gdf_file
 
 @st.cache_data
 def read_geojson(geojson_path):
     gpd_file = gpd.read_file(geojson_path)
     return(gpd_file)
+
+def select_col(data_frame, column_names):
+    """
+    Selecciona columnas específicas de un DataFrame o GeoDataFrame.
+
+    Args:
+    data_frame (pd.DataFrame or gpd.GeoDataFrame): El DataFrame del cual seleccionar columnas.
+    column_names (list): Una lista de nombres de columnas para seleccionar.
+
+    Returns:
+    pd.DataFrame or gpd.GeoDataFrame: Un nuevo DataFrame con solo las columnas seleccionadas.
+    """
+    # Verificar si es un GeoDataFrame y si contiene la columna de geometría
+    is_geodf = isinstance(data_frame, gpd.GeoDataFrame)
+    geometry_column = data_frame.geometry.name if is_geodf else None
+
+    # Seleccionar las columnas y retornar el nuevo DataFrame o GeoDataFrame
+    try:
+        selected_columns = data_frame[column_names]
+        if is_geodf:
+            # Si es un GeoDataFrame, asegurarse de que la columna de geometría se preserve
+            if geometry_column in column_names:
+                return gpd.GeoDataFrame(selected_columns, geometry=geometry_column)
+            else:
+                return gpd.GeoDataFrame(selected_columns)
+        return selected_columns
+    except KeyError as e:
+        # Manejar el error en caso de que alguna columna no exista en el DataFrame
+        print(f"Error: Una o más columnas no existen en el DataFrame. {e}")
+        return None  # O podrías retornar un DataFrame vacío dependiendo de tu caso de uso
+
+def count_points_in_polygons(points_gdf, polygons_gdf, col_name = "Cantidad"):
+    """
+    Agrega una columna a un GeoDataFrame de polígonos que cuenta cuántos puntos están contenidos en cada polígono.
+
+    Args:
+    points_gdf (gpd.GeoDataFrame): GeoDataFrame de puntos.
+    polygons_gdf (gpd.GeoDataFrame): GeoDataFrame de polígonos.
+
+    Returns:
+    gpd.GeoDataFrame: GeoDataFrame de polígonos con una nueva columna que muestra el recuento de puntos dentro de cada polígono.
+    """
+    # Inicializar la columna de conteo en el GeoDataFrame de polígonos
+    polygons_gdf[col_name] = 0
+
+    # Para cada polígono, contar los puntos que caen dentro de él
+    for index, polygon in polygons_gdf.iterrows():
+        # Utiliza el método within de GeoPandas para comprobar si los puntos están dentro del polígono
+        points_in_polygon = points_gdf.within(polygon['geometry'])
+        # Sumar el total de puntos dentro del polígono
+        polygons_gdf.at[index, col_name] = points_in_polygon.sum()
+
+    return polygons_gdf
+
+def add_attributes_to_points(points_gdf, polygons_gdf):
+    """
+    Asigna los atributos de los polígonos a los puntos contenidos dentro de ellos.
+
+    Args:
+    points_gdf (gpd.GeoDataFrame): GeoDataFrame de puntos.
+    polygons_gdf (gpd.GeoDataFrame): GeoDataFrame de polígonos.
+
+    Returns:
+    gpd.GeoDataFrame: GeoDataFrame de puntos con los atributos de los polígonos en los que se ubican.
+    """
+    # Realizar una unión espacial (spatial join) entre puntos y polígonos
+    # Esto asignará a cada punto los atributos del polígono en el que se encuentra
+    joined_gdf = gpd.sjoin(points_gdf, polygons_gdf, how="left", op="within")
+
+    return joined_gdf
+
 
 def region_filter(gdf):
     regiones = gdf["NOM_REGION"].unique()
@@ -65,26 +167,50 @@ def selection_com(reg_selected, com_selected, df_com, df_zon):
     # Filtrar los datos según la selección
     if com_selected == "Todas":
         filtered_gdf = df_com[df_com["NOM_REGION"] == reg_selected]
-    else:
-        filtered_gdf = df_zon[df_zon["NOM_COMUNA"] == com_selected]
-    return filtered_gdf
-  
-  
-# Calcular un nivel de zoom aproximado basado en el tamaño del bounding box
-def calculate_zoom_level(bbox):
-    max_dim = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
-    val_zoom = (8 - np.log(max_dim)).round()
-    return val_zoom
+    else: filtered_gdf = df_zon[df_zon["NOM_COMUNA"] == com_selected] 
+    return filtered_gdf 
 
-def add_ranInt(gdf, name_col):
-    gdf[name_col] = np.random.randint(1, 101, size=len(gdf))
+def point2tab(points_gdf, polygons_gdf, com_selected, col_names):
+    # Asegúrate de que ambos GeoDataFrame tengan la misma proyección
+    if points_gdf.crs is None:
+        points_gdf.set_crs('epsg:4326', inplace=True)    
+    points_gdf = points_gdf.to_crs(polygons_gdf.crs)
+    
+    # Agregar atributos del polígono a los puntos
+    df_table = add_attributes_to_points(points_gdf, polygons_gdf)
+    
+    # Filtrar por la comuna seleccionada si no es "Todas"
+    if com_selected != "Todas":
+        table = df_table[df_table["NOM_COMUNA"] == com_selected]
+    else:
+        table = df_table  
+
+    # Insertar "NOM_COMUNA" al principio de la lista de nombres de columnas
+    col_names.insert(0, "NOM_COMUNA")
+    
+    # Seleccionar las columnas especificadas
+    table = table[col_names]
+    
+    # Eliminar duplicados
+    table = table.drop_duplicates()
+
+    return table
+
+# Calcular un nivel de zoom aproximado basado en el tamaño del bounding box 
+def calculate_zoom_level(bbox): 
+    max_dim = max(bbox[2] - bbox[0], bbox[3] - bbox[1]) 
+    val_zoom = (8 - np.log(max_dim)).round() 
+    return val_zoom 
+
+def add_ranInt(gdf, name_col): 
+    gdf[name_col] = np.random.randint(1, 101, size=len(gdf)) 
+    return gdf 
+
+def add_unique_id(gdf, id_col='id'): 
+    gdf[id_col] = range(1, len(gdf) + 1) 
+    gdf[id_col] = gdf[id_col].astype(str) 
     return gdf
-  
-def add_unique_id(gdf, id_col='id'):
-    gdf[id_col] = range(1, len(gdf) + 1)
-    gdf[id_col] = gdf[id_col].astype(str)
-    return gdf
-  
+
 def gdf_to_geojson_with_str_id(gdf, id_col='id'):
     if gdf[id_col].dtype != 'O':
         gdf[id_col] = gdf[id_col].astype(str)
@@ -104,15 +230,6 @@ def display_map(gdf_filtered, var_col):
           zoom_start=zoom_level, scrollWheelZoom=True, 
           tiles='CartoDB Dark Matter')
           
-    myscale = (gdf_filtered[var_col].quantile((0,0.1,0.75,0.9,0.98,1))).tolist()
-    
-    #for col in gdf_filtered.columns:
-     #   gdf_filtered[col] = gdf_filtered[col].astype(str)
-    
-   # gdf_data["id"] = gdf_data.id.astype(str)
-    gdf_filtered["id"] = gdf_filtered.id.astype(str)
-
-    #gdf_filtered = gdf_filtered.set_index('id')
     folium.Choropleth(
         geo_data=gdf_filtered,
         name="geometry",
@@ -153,11 +270,13 @@ def express_mapbox(gdf_filtered, var_col):
                                color_continuous_scale="Viridis"
                                #projection="mercator"
                                )
+    
     fig.update_geos(fitbounds="locations", visible=False)
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, 
                       legend=dict(yanchor="top", y=0.9, xanchor="left", x=0.4))
-    st_map = st.plotly_chart(fig, width=500, height=300)
-    return st_map
+
+    st_map = st.plotly_chart(fig, width= 500, height=300)
+    return st_map 
 
 
 
@@ -172,15 +291,22 @@ def express_map(gdf_filtered, var_col):
     return st_map
 
 def table_info(df, drop_cols, h = 200, name_col = "Cantidad"):
-    df_display = df.drop(columns=drop_cols, errors='ignore').reset_index(drop=True)
-    df_display = df_display.sort_values(name_col, ascending=False)
-    st_df = st.dataframe(df_display,
-            # column_order=("NOM_COMUNA"),
-            use_container_width = True,
-            hide_index=True,
-            width=None,
-            height = h)
-    return st_df
+    df_new = df.drop(columns=drop_cols, errors='ignore').reset_index(drop=True)
+    df_new = df_new.sort_values(name_col, ascending=False)
+    gb = GridOptionsBuilder.from_dataframe(df_new)
+    gb.configure_default_column(enablePivot=True, enableValue=True, 
+                                enableRowGroup=True, editable=True, filter=True)
+    gb.configure_grid_options(domLayout='normal', autoSizeAllColumns=True)
+    gridOptions = gb.build()
+    ag_df = AgGrid(df_new, theme = "streamlit", height = h,
+                   fit_columns_on_grid_load=False,
+                   gridOptions=gridOptions, enable_enterprice_modules= True)
+#    st_df = st.dataframe(df_display,
+#            use_container_width = True,
+#            hide_index=True,
+#            width=None,
+#            height = h)
+    return ag_df
   
 def tab_bars(df_com, reg_selected, cols_2):
     df_display = df_com[df_com["NOM_REGION"] == reg_selected]
@@ -270,7 +396,8 @@ def make_donut(input_response, input_text, input_color):
                       legend=None),
   ).properties(width=130, height=130)
     
-  text = plot.mark_text(align='center', color="#29b5e8", font="Lato", fontSize=32, fontWeight=700, fontStyle="italic").encode(text=alt.value(f'{input_response} %'))
+  text = plot.mark_text(align='center', color="#29b5e8", font="Lato", fontSize=25, fontWeight=700,
+                        fontStyle="italic").encode(text=alt.value(f'{input_response} %'))
   plot_bg = alt.Chart(source_bg).mark_arc(innerRadius=45, cornerRadius=20).encode(
       theta="% value",
       color= alt.Color("Topic:N",
@@ -287,7 +414,6 @@ def make_donut(input_response, input_text, input_color):
 
 def main():
     # st.title(APP_TITLE)
-    
     
     st.sidebar.title('Selección Territorial')
     st.sidebar.caption(APP_SUB_TITLE)
@@ -309,18 +435,41 @@ def main():
             df_com = gdf_comunas, 
             df_zon = gdf_zonas)
     gdf_filtered = add_unique_id(gdf_filtered)
+    gdf_points_raw = csv2gdf(path_csv)
+    gdf_points = select_col(gdf_points_raw, col_names)
+    gdf_filtered = count_points_in_polygons(gdf_points_raw, gdf_filtered)
+    #gdf_raw = select_col(gdf_points_raw, col_names) 
+    gdf_raw = gdf_points_raw
+    df_table = point2tab(points_gdf = gdf_points_raw, 
+                         polygons_gdf = gdf_filtered, 
+                         com_selected = com_selected,
+                         col_names = col_names)
+    
+#    # Asegúrate de que los GeoDataFrame tengan CRS definido antes de realizar operaciones espaciales
+#    if gdf_raw.crs is None:
+#        gdf_raw.set_crs('epsg:4326', inplace=True)
+#
+#    # Asegúrate de que ambos GeoDataFrame tengan la misma proyección
+#    gdf_raw = gdf_raw.to_crs(gdf_filtered.crs)
+#
+#    df_table = add_attributes_to_points(gdf_raw, gdf_filtered)
+#    df_table = df_table[df_table["NOM_COMUNA"] == com_selected] 
+#    df_table = select_col(df_table, col_names)
 
+    
     #Display Metrics
     st.caption(f'Region: {reg_selected}, Comuna: {com_selected}')
     
     col1, col2, col3 = st.columns((1, 5, 2), gap = "medium")
     with col1:
         st.markdown("**Datos**")
-        data1, data2, data3 = get_max_com(df_com= gdf_comunas, reg_selected = reg_selected, vals_col = "Cantidad", id_col = "NOM_COMUNA")
+        data1, data2, data3 = get_max_com(df_com= gdf_comunas, reg_selected = reg_selected,
+                                          vals_col = "Cantidad", id_col = "NOM_COMUNA")
 
         st.write("% Regional")
-        percent_reg = get_max_reg(df_com= gdf_comunas, reg_selected = reg_selected, vals_col = "Cantidad") 
-        donut_chart_greater = make_donut(percent_reg, 'Inbound Migration', 'green')
+        percent_reg = get_max_reg(df_com= gdf_comunas, reg_selected = reg_selected,
+                                  vals_col = "Cantidad") 
+        donut_chart_greater = make_donut(percent_reg, 'Respecto al País', 'blue')
         st.altair_chart(donut_chart_greater)
  
 
@@ -330,12 +479,13 @@ def main():
         st_map = express_mapbox(gdf_filtered = gdf_filtered, var_col = "Cantidad")
 
         st.markdown("**Tabla de Datos**")
-        tab = table_info(df = gdf_filtered, drop_cols = drop_cols, name_col = "Cantidad")
+        tab = table_info(df = df_table, drop_cols = drop_cols, name_col = "NOM_COMUNA")
         
    
     with col3:
       st.markdown("**Informaciones**")
-      tabBar = tab_bars(df_com = gdf_comunas, reg_selected = reg_selected, cols_2 = ["NOM_COMUNA", "Cantidad"])
+      tabBar = tab_bars(df_com = gdf_comunas, reg_selected = reg_selected, 
+                        cols_2 = ["NOM_COMUNA", "Cantidad"])
 
       with st.expander('About', expanded=True):
           st.write('''

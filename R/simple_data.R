@@ -17,13 +17,10 @@ remove_island <-  function(sf_polygon, min_area = 3e6){
   return(pol)
 }
 
-
-
 export_geojson <-  function(sf_polygon, path_out){
   gjson_file <- geojsonio::geojson_json(sf_polygon)
   geojsonio::geojson_write(gjson_file, file = path_out)
 }
-
 
 # Leer archivos -----------------------------------------------------------
 comunas <-  st_read("originales/Comunas_Chile.shp") %>% 
@@ -31,9 +28,6 @@ comunas <-  st_read("originales/Comunas_Chile.shp") %>%
 
 zonas <- st_read("originales/zonas_nacional.shp")%>% 
   st_transform(4326)
-
-
-
 
 # Limpieza comuna ---------------------------------------------------------
 
@@ -85,8 +79,6 @@ zonas_f <- zonas_f %>%
   mutate(REGION  = sprintf("%02d", as.numeric(REGION))) %>% 
   mutate(id = 1:nrow(.)) 
   
-
-
 # Región del Maule --------------------------------------------------------
 
 comunas_maule <- comunas_all %>% 
@@ -94,7 +86,6 @@ comunas_maule <- comunas_all %>%
 
 zonas_maule <- zonas_f %>% 
   filter(REGION == "07")
-
 
 # guardar geojson ---------------------------------------------------------
 export_geojson(comunas_all, path_out = "data/INE/comunas_nac.geojson")
