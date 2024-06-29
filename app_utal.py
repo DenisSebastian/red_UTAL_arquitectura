@@ -430,10 +430,10 @@ def main():
     # Load Data
     gdf_comunas = read_and_count(geojson_path = name_comunas, 
                                  csv_path = path_csv, 
-                                 name_count = "Cantidad")
+                                 name_count = var_count)
     gdf_zonas = read_and_count(geojson_path = name_zonas, 
                                csv_path = path_csv, 
-                               name_count = "Cantidad")
+                               name_count = var_count)
     
     # Simulate data
 #    gdf_comunas = add_ranInt(gdf_comunas, name_col = "Cantidad")
@@ -466,11 +466,11 @@ def main():
     with col1:
         st.markdown("**Datos**")
         data1, data2, data3 = get_max_com(df_com= gdf_comunas, reg_selected = reg_selected,
-                                          vals_col = "Cantidad", id_col = "NOM_COMUNA")
+                                          vals_col = var_count, id_col = "NOM_COMUNA")
 
         st.write("% Regional")
         percent_reg = get_max_reg(df_com= gdf_comunas, reg_selected = reg_selected,
-                                  vals_col = "Cantidad") 
+                                  vals_col = var_count) 
         donut_chart_greater = make_donut(percent_reg, 'Respecto al País', 'blue')
         st.altair_chart(donut_chart_greater)
  
@@ -478,7 +478,7 @@ def main():
     with col2:
         st.markdown("**Mapas**")
        # st_map = display_map(gdf_filtered = gdf_filtered, var_col = "Cantidad")
-        st_map = express_mapbox(gdf_filtered = gdf_filtered, var_col = "Cantidad")
+        st_map = express_mapbox(gdf_filtered = gdf_filtered, var_col = var_count)
 
         st.markdown("**Tabla de Datos**")
         tab = table_info(df = df_table, drop_cols = drop_cols, name_col = "NOM_COMUNA")
@@ -487,7 +487,7 @@ def main():
     with col3:
       st.markdown("**Informaciones**")
       tabBar = tab_bars(df_com = gdf_comunas, reg_selected = reg_selected, 
-                        cols_2 = ["NOM_COMUNA", "Cantidad"])
+                        cols_2 = ["NOM_COMUNA", var_count])
 
       with st.expander('About', expanded=True):
           st.write('''
