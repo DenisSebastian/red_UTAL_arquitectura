@@ -37,6 +37,8 @@ col_names = [
 "CARGO",
 ]
 
+var_count = "Ex-Alumnos"
+
 # Configuración de la página
 st.set_page_config(
     page_title = APP_TITLE, 
@@ -73,10 +75,17 @@ def csv2gdf(csv_path):
     gdf_file = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
     return gdf_file
 
-@st.cache_data
 def read_geojson(geojson_path):
     gpd_file = gpd.read_file(geojson_path)
     return(gpd_file)
+
+@st.cache_data
+def read_and_count(geojson_path, csv_path, name_count = "Cantidad"):
+    gdf_polygons = read_geojson(geojson_path)
+    gdf_points = csv2gdf(csv_path)
+    gdf_end = count_points_in_polygons(gdf_points, gdf_polygons, col_name = name_count)
+    return gdf_end
+
 
 def select_col(data_frame, column_names):
     """
@@ -419,12 +428,16 @@ def main():
     st.sidebar.caption(APP_SUB_TITLE)
     
     # Load Data
-    gdf_comunas = read_geojson(name_comunas)
-    gdf_zonas = read_geojson(name_zonas)
+    gdf_comunas = read_and_count(geojson_path = name_comunas, 
+                                 csv_path = path_csv, 
+                                 name_count = "Cantidad")
+    gdf_zonas = read_and_count(geojson_path = name_zonas, 
+                               csv_path = path_csv, 
+                               name_count = "Cantidad")
     
     # Simulate data
-    gdf_comunas = add_ranInt(gdf_comunas, name_col = "Cantidad")
-    gdf_zonas = add_ranInt(gdf_zonas, name_col = "Cantidad")
+#    gdf_comunas = add_ranInt(gdf_comunas, name_col = "Cantidad")
+#    gdf_zonas = add_ranInt(gdf_zonas, name_col = "Cantidad")
 
     
     #Display Filters and Map
@@ -434,28 +447,17 @@ def main():
             com_selected = com_selected, 
             df_com = gdf_comunas, 
             df_zon = gdf_zonas)
+    # id será reemplzado por el nombre zona
     gdf_filtered = add_unique_id(gdf_filtered)
+    
     gdf_points_raw = csv2gdf(path_csv)
-    gdf_points = select_col(gdf_points_raw, col_names)
-    gdf_filtered = count_points_in_polygons(gdf_points_raw, gdf_filtered)
-    #gdf_raw = select_col(gdf_points_raw, col_names) 
-    gdf_raw = gdf_points_raw
+#    gdf_filtered = count_points_in_polygons(gdf_points_raw, gdf_filtered)
+
+
     df_table = point2tab(points_gdf = gdf_points_raw, 
                          polygons_gdf = gdf_filtered, 
                          com_selected = com_selected,
                          col_names = col_names)
-    
-#    # Asegúrate de que los GeoDataFrame tengan CRS definido antes de realizar operaciones espaciales
-#    if gdf_raw.crs is None:
-#        gdf_raw.set_crs('epsg:4326', inplace=True)
-#
-#    # Asegúrate de que ambos GeoDataFrame tengan la misma proyección
-#    gdf_raw = gdf_raw.to_crs(gdf_filtered.crs)
-#
-#    df_table = add_attributes_to_points(gdf_raw, gdf_filtered)
-#    df_table = df_table[df_table["NOM_COMUNA"] == com_selected] 
-#    df_table = select_col(df_table, col_names)
-
     
     #Display Metrics
     st.caption(f'Region: {reg_selected}, Comuna: {com_selected}')
