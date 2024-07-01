@@ -282,6 +282,9 @@ def express_mapbox(gdf_filtered, var_col):
     
     fig.update_geos(fitbounds="locations", visible=False)
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, 
+                      coloraxis_colorbar=dict(
+                          tickformat=".0f"  # Formato para mostrar números enteros
+                        ),
                       legend=dict(yanchor="top", y=0.9, xanchor="left", x=0.4))
 
     st_map = st.plotly_chart(fig, width= 500, height=300)
@@ -317,11 +320,16 @@ def table_info(df, drop_cols, h = 200, name_col = "Cantidad"):
 #            height = h)
     return ag_df
   
-def tab_bars(df_com, reg_selected, cols_2):
+def tab_bars(df_com, reg_selected, cols_2, var_count):
     df_display = df_com[df_com["NOM_REGION"] == reg_selected]
     df_display = df_display.drop(columns="geometry", errors='ignore').reset_index(drop=True)
     df_display = df_display.sort_values(cols_2[1], ascending=False)
-    
+   
+    # Evitar el error de min/max cuando max_value es 0
+    max_value = max(df_display[cols_2[1]])
+    if max_value == 0:
+        max_value = 1
+
     st_tab_bar = st.dataframe(df_display, 
                   column_order=(cols_2),
                   hide_index=True,
@@ -333,12 +341,11 @@ def tab_bars(df_com, reg_selected, cols_2):
                        width = "small", 
                       ),
                       cols_2[1]: st.column_config.ProgressColumn(
-                        "Ex-Alumnos",
+                        var_count,
                         format="%f",
                         min_value=0,
                         width = "small", 
-                        max_value=max(df_display[cols_2[1]],
-                        ),
+                        max_value=max_value
                       )}
                   )
     return st_tab_bar
@@ -348,13 +355,20 @@ def get_max_com(df_com, reg_selected,  vals_col = "Cantidad", id_col = "NOM_COMU
     df_display = df_display.drop(columns="geometry", errors='ignore').reset_index(drop=True)
     df_display = df_display.sort_values(vals_col, ascending=False)
     df = df_display[[id_col, vals_col]]
-    com_1 = df.iloc[0]
-    com_2 = df.iloc[1]
-    resto = df.iloc[2:].sum()
-    suma_cant = df[vals_col].sum()
-    com_1_name = [com_1[id_col], com_1[vals_col], (com_1[vals_col]/suma_cant)*100]
-    com_2_name = [com_2[id_col], com_2[vals_col],  (com_2[vals_col]/suma_cant)*100]
-    resto_name = ["Resto Comunas", resto[vals_col].sum(),  (resto[vals_col]/suma_cant)*100]
+    if df.empty:
+        com_1 = com_2 = resto = {id_col: "N/A", vals_col: 0}
+        suma_cant = 0
+    else:
+        com_1 = df.iloc[0] if len(df) > 0 else {id_col: "N/A", vals_col: 0}
+        com_2 = df.iloc[1] if len(df) > 1 else {id_col: "N/A", vals_col: 0}
+        resto = df.iloc[2:].sum() if len(df) > 2 else {vals_col: 0}
+        suma_cant = df[vals_col].sum()
+
+    com_1_name = [com_1[id_col], com_1[vals_col], (com_1[vals_col]/suma_cant)*100 if suma_cant else 0]
+    com_2_name = [com_2[id_col], com_2[vals_col], (com_2[vals_col]/suma_cant)*100 if suma_cant else 0]
+    resto_name = ["Resto Comunas", resto[vals_col].sum() if len(df) > 2 else 0, 
+                  (resto[vals_col]/suma_cant)*100 if suma_cant else 0]
+
     st_metric_1 = make_metrics(com_1_name)
     st_metric_2 = make_metrics(com_2_name)
     st_metric_3 = make_metrics(resto_name)
@@ -487,12 +501,12 @@ def main():
     with col3:
       st.markdown("**Informaciones**")
       tabBar = tab_bars(df_com = gdf_comunas, reg_selected = reg_selected, 
-                        cols_2 = ["NOM_COMUNA", var_count])
+                        cols_2 = ["NOM_COMUNA", var_count], var_count = var_count )
 
       with st.expander('About', expanded=True):
           st.write('''
               - [:blue[**Esc. de Arquitectura UTAL**]](http://www.arquitectura.utalca.cl/)
-              - [:blue[**Diagrama Miro**]](https://miro.com/app/board/uXjVNDBK62g=/).
+              - [:blue[**Link de la Encuesta**]](https://miro.com/app/board/uXjVNDBK62g=/)
               ''')
 
 
