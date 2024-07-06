@@ -33,7 +33,7 @@ col_names = [
 "INSTITUCIÓN",
 "CARGO",
 ]
-excluded_emails = ["denisberroeta@gmail.com", "cristycaceresb@gmail.com",
+excluded_emails = ["denisberroeta@gmail.com", "cristycaceresb@gmail.com","denos", 
                    "coke_troncoso@hotmail.com","jorgetroncosoastudillo@gmail.com"]
 var_count = "Ex-Alumnos"
 sheet_name = "datos_base"
