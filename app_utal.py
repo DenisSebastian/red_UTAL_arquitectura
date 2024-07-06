@@ -3,26 +3,23 @@
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
-#import folium
-#from streamlit_folium import st_folium
-#import matplotlib.pyplot as plt
-#import matplotlib.colors as mcolors
-#import branca
 import numpy as np
 from streamlit_option_menu import option_menu
 import altair as alt
 import plotly.express as px
 from streamlit_plotly_mapbox_events import plotly_mapbox_events
 from st_aggrid import AgGrid, GridOptionsBuilder
+import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 
 # variables
-APP_TITLE = 'Universidad de Talca'
+APP_TITLE = 'VISOR RED ALUMNI ARQ UTALCA'
 APP_SUB_TITLE = 'Red de Ex-alumnos'
 name_comunas = "data/INE/comunas_nac.geojson"
 name_zonas = "data/INE/zonas_nac.geojson"
 drop_cols = ["OBJECTID", "COMUNA", "PROVINCIA", "NOM_REGION" , "NOM_PROVIN", 
              "REGION", "geometry", "id"]
-path_csv = "originales/dataraw.csv"
+#path_csv = "originales/dataraw.csv"
 col_names = [
 "Dirección de correo electrónico",
 "NOMBRE ",
@@ -36,8 +33,10 @@ col_names = [
 "INSTITUCIÓN",
 "CARGO",
 ]
-
+excluded_emails = ["denisberroeta@gmail.com", "cristycaceresb@gmail.com",
+                   "coke_troncoso@hotmail.com","jorgetroncosoastudillo@gmail.com"]
 var_count = "Ex-Alumnos"
+sheet_name = "datos_base"
 
 # Configuración de la página
 st.set_page_config(
@@ -46,6 +45,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 # Styles
 st.markdown(
     """
@@ -58,11 +58,31 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 # Funciones
 @st.cache_data
 def read_csv(csv_path):
     df = pd.read_csv(csv_path)
     return df 
+
+@st.cache_data
+def gs_gdf(sheet_name = "datos_base", excluded_emails=None):
+    if excluded_emails is None:
+        excluded_emails = []
+        
+    df = conn.read(worksheet = sheet_name)
+    df = df[df['Coordenadas'].notna()]
+    df[['Latitude', 'Longitude']] = df['Coordenadas'].str.split(',', expand=True)
+    # Convertir las columnas de latitud y longitud a float
+    df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+    df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+    # Filtrar los correos electrónicos excluidos
+    df = df[~df['Dirección de correo electrónico'].isin(excluded_emails)]
+    gdf_file = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
+    return gdf_file
+
 
 @st.cache_data
 def csv2gdf(csv_path):
@@ -80,9 +100,10 @@ def read_geojson(geojson_path):
     return(gpd_file)
 
 @st.cache_data
-def read_and_count(geojson_path, csv_path, name_count = "Cantidad"):
+def read_and_count(geojson_path, name_count = "Cantidad"):
     gdf_polygons = read_geojson(geojson_path)
-    gdf_points = csv2gdf(csv_path)
+    gdf_points = gs_gdf(sheet_name =sheet_name, excluded_emails = excluded_emails)
+    #gdf_points = csv2gdf(csv_path)
     gdf_end = count_points_in_polygons(gdf_points, gdf_polygons, col_name = name_count)
     return gdf_end
 
@@ -171,7 +192,11 @@ def com_filter(gdf_reg, selected_region):
     selected_comuna = st.sidebar.selectbox("Selecciona una comuna", com_options)
     # st.header(f'Comuna: {selected_comuna}')
     return selected_comuna
-  
+
+def checkbox_data():
+    show = st.sidebar.checkbox("Mostrar Ex-Alumnos sin dirección")
+    return show
+
 def selection_com(reg_selected, com_selected, df_com, df_zon):
     # Filtrar los datos según la selección
     if com_selected == "Todas":
@@ -179,7 +204,8 @@ def selection_com(reg_selected, com_selected, df_com, df_zon):
     else: filtered_gdf = df_zon[df_zon["NOM_COMUNA"] == com_selected] 
     return filtered_gdf 
 
-def point2tab(points_gdf, polygons_gdf, com_selected, col_names):
+def point2tab(points_gdf, polygons_gdf, com_selected, col_names, show_no_coords):
+
     # Asegúrate de que ambos GeoDataFrame tengan la misma proyección
     if points_gdf.crs is None:
         points_gdf.set_crs('epsg:4326', inplace=True)    
@@ -187,6 +213,9 @@ def point2tab(points_gdf, polygons_gdf, com_selected, col_names):
     
     # Agregar atributos del polígono a los puntos
     df_table = add_attributes_to_points(points_gdf, polygons_gdf)
+
+    if not show_no_coords:
+        df_table = df_table[df_table["NOM_COMUNA"].notna()]
     
     # Filtrar por la comuna seleccionada si no es "Todas"
     if com_selected != "Todas":
@@ -376,7 +405,7 @@ def get_max_com(df_com, reg_selected,  vals_col = "Cantidad", id_col = "NOM_COMU
 
 def make_metrics(list_val):
     nom_com = str(list_val[0])
-    n_com = str(list_val[1]) + " p."
+    n_com = str(list_val[1]) + " pers."
     n_perc = str(round(list_val[2], 2)) + " %"
     st_metric = st.metric(nom_com, n_com, n_perc)
     return st_metric
@@ -436,17 +465,15 @@ def make_donut(input_response, input_text, input_color):
 # Configuración de página
 
 def main():
-    # st.title(APP_TITLE)
+    st.header(APP_TITLE)
     
     st.sidebar.title('Selección Territorial')
     st.sidebar.caption(APP_SUB_TITLE)
     
     # Load Data
     gdf_comunas = read_and_count(geojson_path = name_comunas, 
-                                 csv_path = path_csv, 
                                  name_count = var_count)
     gdf_zonas = read_and_count(geojson_path = name_zonas, 
-                               csv_path = path_csv, 
                                name_count = var_count)
     
     # Simulate data
@@ -464,14 +491,16 @@ def main():
     # id será reemplzado por el nombre zona
     gdf_filtered = add_unique_id(gdf_filtered)
     
-    gdf_points_raw = csv2gdf(path_csv)
+    
+    gdf_points_raw = gs_gdf(sheet_name = sheet_name, excluded_emails = excluded_emails)
 #    gdf_filtered = count_points_in_polygons(gdf_points_raw, gdf_filtered)
 
-
+    show_no_coords = st.sidebar.checkbox("Mostrar Ex-Alumnos sin dirección", value = False)
     df_table = point2tab(points_gdf = gdf_points_raw, 
                          polygons_gdf = gdf_filtered, 
                          com_selected = com_selected,
-                         col_names = col_names)
+                         col_names = col_names,
+                         show_no_coords = show_no_coords)
     
     #Display Metrics
     st.caption(f'Region: {reg_selected}, Comuna: {com_selected}')
@@ -508,7 +537,6 @@ def main():
               - [:blue[**Esc. de Arquitectura UTAL**]](http://www.arquitectura.utalca.cl/)
               - [:blue[**Link de la Encuesta**]](https://miro.com/app/board/uXjVNDBK62g=/)
               ''')
-
 
 if __name__ == "__main__":
     main()
