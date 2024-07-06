@@ -74,14 +74,16 @@ def gs_gdf(sheet_name="datos_base", excluded_emails=None):
 
     df = conn.read(worksheet=sheet_name)
     df = df[df['Coordenadas'].notna()]
+    df[['Latitude', 'Longitude']] = df['Coordenadas'].str.split(',', expand=True)
 
     # Split coordinates into two columns safely
-    coordinates_split = df['Coordenadas'].str.split(',', expand=True)
-    if coordinates_split.shape[1] == 2:
-        df[['Latitude', 'Longitude']] = coordinates_split
-    else:
-        st.error("Error: Coordinates column does not contain valid latitude and longitude data.")
-        return None
+    # coordinates_split = df['Coordenadas'].str.split(',', expand=True)
+    
+    # if coordinates_split.shape[1] == 2:
+    #     df[['Latitude', 'Longitude']] = coordinates_split
+    # else:
+    #     st.error("Error: Coordinates column does not contain valid latitude and longitude data.")
+    #     return None
 
     # Convertir las columnas de latitud y longitud a float
     df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
