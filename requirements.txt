@@ -5,7 +5,7 @@ geopandas
 plotly
 plotly-express
 streamlit-option-menu
-treamlit-plotly-mapbox-events
+streamlit-plotly-mapbox-events
 altair
 streamlit-aggrid
 st-gsheets-connection
