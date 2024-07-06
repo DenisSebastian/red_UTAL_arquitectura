@@ -7,6 +7,5 @@ originales/*
 originales
 originales/dataraw.csv
 
-.streamlit/secrets.toml
 
 .DS_Store
