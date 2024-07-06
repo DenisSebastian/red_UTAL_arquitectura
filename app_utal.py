@@ -66,22 +66,32 @@ def read_csv(csv_path):
     df = pd.read_csv(csv_path)
     return df 
 
+
 @st.cache_data
-def gs_gdf(sheet_name = "datos_base", excluded_emails=None):
+def gs_gdf(sheet_name="datos_base", excluded_emails=None):
     if excluded_emails is None:
         excluded_emails = []
-        
-    df = conn.read(worksheet = sheet_name)
+
+    df = conn.read(worksheet=sheet_name)
     df = df[df['Coordenadas'].notna()]
-    df[['Latitude', 'Longitude']] = df['Coordenadas'].str.split(',', expand=True)
+
+    # Split coordinates into two columns safely
+    coordinates_split = df['Coordenadas'].str.split(',', expand=True)
+    if coordinates_split.shape[1] == 2:
+        df[['Latitude', 'Longitude']] = coordinates_split
+    else:
+        st.error("Error: Coordinates column does not contain valid latitude and longitude data.")
+        return None
+
     # Convertir las columnas de latitud y longitud a float
     df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
     df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+
     # Filtrar los correos electrónicos excluidos
     df = df[~df['Dirección de correo electrónico'].isin(excluded_emails)]
+    
     gdf_file = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
     return gdf_file
-
 
 @st.cache_data
 def csv2gdf(csv_path):
@@ -99,13 +109,13 @@ def read_geojson(geojson_path):
     return(gpd_file)
 
 @st.cache_data
-def read_and_count(geojson_path, name_count = "Cantidad", excluded_emails = excluded_emails):
+def read_and_count(geojson_path, sheet_name="datos_base", name_count="Cantidad", excluded_emails=None):
     gdf_polygons = read_geojson(geojson_path)
-    gdf_points = gs_gdf(sheet_name =sheet_name, excluded_emails = excluded_emails)
-    #gdf_points = csv2gdf(csv_path)
-    gdf_end = count_points_in_polygons(gdf_points, gdf_polygons, col_name = name_count)
+    gdf_points = gs_gdf(sheet_name=sheet_name, excluded_emails=excluded_emails)
+    if gdf_points is None:
+        return None
+    gdf_end = count_points_in_polygons(gdf_points, gdf_polygons, col_name=name_count)
     return gdf_end
-
 
 def select_col(data_frame, column_names):
     """
@@ -471,8 +481,12 @@ def main():
     
     # Load Data
     gdf_comunas = read_and_count(geojson_path = name_comunas, 
+                                 sheet_name = sheet_name,
+                                 excluded_emails = excluded_emails,
                                  name_count = var_count)
     gdf_zonas = read_and_count(geojson_path = name_zonas, 
+                               sheet_name = sheet_name,
+                               excluded_emails = excluded_emails,
                                name_count = var_count)
     
     # Simulate data
