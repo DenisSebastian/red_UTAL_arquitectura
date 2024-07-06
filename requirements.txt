@@ -1,4 +1,8 @@
 streamlit
 pandas
-altair
+geopandas
 plotly
+streamlit-option-menu
+altair
+streamlit-aggrid
+st-gsheets-connection
