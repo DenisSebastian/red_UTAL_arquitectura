@@ -9,3 +9,7 @@ streamlit-plotly-mapbox-events
 altair
 streamlit-aggrid
 st-gsheets-connection
+fiona
+shapely
+pyproj
+rtree
