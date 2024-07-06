@@ -9,7 +9,6 @@ import altair as alt
 import plotly.express as px
 from streamlit_plotly_mapbox_events import plotly_mapbox_events
 from st_aggrid import AgGrid, GridOptionsBuilder
-import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 
 # variables
@@ -100,7 +99,7 @@ def read_geojson(geojson_path):
     return(gpd_file)
 
 @st.cache_data
-def read_and_count(geojson_path, name_count = "Cantidad"):
+def read_and_count(geojson_path, name_count = "Cantidad", excluded_emails = excluded_emails):
     gdf_polygons = read_geojson(geojson_path)
     gdf_points = gs_gdf(sheet_name =sheet_name, excluded_emails = excluded_emails)
     #gdf_points = csv2gdf(csv_path)
