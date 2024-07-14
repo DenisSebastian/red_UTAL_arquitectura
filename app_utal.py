@@ -32,8 +32,10 @@ col_names = [
 "INSTITUCIÓN",
 "CARGO",
 ]
-excluded_emails = ["denisberroeta@gmail.com", "cristycaceresb@gmail.com","denos", 
-                   "coke_troncoso@hotmail.com","jorgetroncosoastudillo@gmail.com"]
+excluded_emails = ["denisberroeta@gmail.com", 
+                   "coke_troncoso@hotmail.com",
+                   "jorgetroncosoastudillo@gmail.com"]
+
 var_count = "Ex-Alumnos"
 sheet_name = "datos_base"
 
@@ -66,6 +68,29 @@ def read_csv(csv_path):
     df = pd.read_csv(csv_path)
     return df 
 
+def remove_duplicates_keep_latest(df, email_col = "Dirección de correo electrónico", date_col = "Marca temporal"):
+    """
+    Remove duplicate entries in the dataframe based on email, keeping the latest entry based on the date column.
+    
+    Parameters:
+    - df: pandas DataFrame containing the data.
+    - email_col: str, name of the column containing the email addresses.
+    - date_col: str, name of the column containing the registration dates.
+    
+    Returns:
+    - A pandas DataFrame with duplicates removed, keeping the latest entry based on the date column.
+    """
+    # Convert date column to datetime if it's not already
+    df[date_col] = pd.to_datetime(df[date_col])
+    
+    # Sort the dataframe by email and date, keeping the latest date last
+    df_sorted = df.sort_values(by=[email_col, date_col], ascending=[True, False])
+    
+    # Drop duplicates, keeping the first occurrence (which is the latest date due to sorting)
+    df_unique = df_sorted.drop_duplicates(subset=email_col, keep='first')
+    
+    return df_unique
+
 
 @st.cache_data
 def gs_gdf(sheet_name="datos_base", excluded_emails=None):
@@ -74,6 +99,7 @@ def gs_gdf(sheet_name="datos_base", excluded_emails=None):
 
     df = conn.read(worksheet=sheet_name)
     df = df[df['Coordenadas'].notna()]
+    df = remove_duplicates_keep_latest(df = df)
     df[['Latitude', 'Longitude']] = df['Coordenadas'].str.split(',', expand=True)
 
     # Split coordinates into two columns safely
